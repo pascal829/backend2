@@ -19,7 +19,7 @@ const ALERT_FROM = process.env.ALERT_FROM;
 const allowedOrigins = [
   'http://localhost:5173', 
   'http://localhost:3000',
-  'https://ton-site-frontend.vercel.app' // 👈 Remplace par ton vrai lien Vercel
+  'https://maintenance-two-nu.vercel.app/' // 👈 Remplace par ton vrai lien Vercel
 ]; 
 
 app.use(cors({
