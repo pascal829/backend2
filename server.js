@@ -255,8 +255,34 @@ app.post('/api/auth/login', (req, res) => {
 // ===== ROUTES MACHINES =====
 
 app.get('/api/machines', authMiddleware, (req, res) => {
-  db.all('SELECT * FROM machines', [], (err, rows) => {
-    if (err) return res.status(500).json({ error: 'Erreur serveur' });
+  const query = `
+    SELECT 
+      m.*, 
+      COALESCE(
+        json_agg(
+          json_build_object(
+            'id', i.id,
+            'machineId', i.machineid,
+            'date', i.date,
+            'type', i.type,
+            'technicien', i.technicien,
+            'duree', i.duree,
+            'description', i.description,
+            'resultat', i.resultat
+          )
+        ) FILTER (WHERE i.id IS NOT NULL), 
+        '[]'
+      ) AS interventions
+    FROM machines m
+    LEFT JOIN interventions i ON m.id = i.machineid
+    GROUP BY m.id;
+  `;
+
+  db.all(query, [], (err, rows) => {
+    if (err) {
+      console.error('Erreur lors de la récupération des machines:', err);
+      return res.status(500).json({ error: 'Erreur serveur' });
+    }
     res.json(rows);
   });
 });
