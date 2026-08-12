@@ -288,76 +288,22 @@ app.get('/api/machines', authMiddleware, (req, res) => {
 });
 
 app.post('/api/machines', authMiddleware, (req, res) => {
-  const {
-  name,
-  type,
-  location,
-  status,
-  lastMaintenance,
-  nextMaintenance,
-  notes,
-  technicienId,
-  maintenanceInterval
-} = req.body;
+  const { name, type, location, status, lastMaintenance, nextMaintenance, notes, technicienId } = req.body;
 
   // Remplacement par $1 à $8 + RETURNING id
   db.get(
-  `INSERT INTO machines (
-    name,
-    type,
-    location,
-    status,
-    lastMaintenance,
-    nextMaintenance,
-    incidents,
-    notes,
-    technicienId,
-    maintenanceinterval
-  )
-  VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8, $9)
-  RETURNING id`,
-  [
-    name,
-    type,
-    location,
-    status,
-    lastMaintenance,
-    nextMaintenance,
-    notes,
-    technicienId || null,
-    maintenanceInterval || 30
-  ],
+    `INSERT INTO machines (name, type, location, status, lastMaintenance, nextMaintenance, incidents, notes, technicienId)
+     VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8) RETURNING id`,
+    [name, type, location, status, lastMaintenance, nextMaintenance, notes, technicienId || null],
     (err, row) => {
       if (err) return res.status(500).json({ error: 'Erreur serveur' });
-      res.json({
-  id: row.id,
-  name,
-  type,
-  location,
-  status,
-  lastMaintenance,
-  nextMaintenance,
-  incidents: 0,
-  notes,
-  technicienId,
-  maintenanceInterval: maintenanceInterval || 30
-});
- 
+      res.json({ id: row.id, name, type, location, status, lastMaintenance, nextMaintenance, incidents: 0, notes, technicienId });
+    }
+  );
 });
 
 app.put('/api/machines/:id', authMiddleware, (req, res) => {
-  const {
-  name,
-  type,
-  location,
-  status,
-  lastMaintenance,
-  nextMaintenance,
-  incidents,
-  notes,
-  technicienId,
-  maintenanceInterval
-} = req.body;
+  const { name, type, location, status, lastMaintenance, nextMaintenance, incidents, notes, technicienId } = req.body;
 
   // 1. Vérification de l'ancien état (Changement ? par $1)
   db.get('SELECT * FROM machines WHERE id = $1', [req.params.id], async (err, oldMachine) => {
@@ -369,32 +315,9 @@ app.put('/api/machines/:id', authMiddleware, (req, res) => {
 
   // 2. Mise à jour (Changement des ? par $1 jusqu'à $10)
   db.run(
-  `UPDATE machines
-   SET
-     name=$1,
-     type=$2,
-     location=$3,
-     status=$4,
-     lastMaintenance=$5,
-     nextMaintenance=$6,
-     incidents=$7,
-     notes=$8,
-     technicienId=$9,
-     maintenanceinterval=$10
-   WHERE id=$11`,
-  [
-    name,
-    type,
-    location,
-    status,
-    lastMaintenance,
-    nextMaintenance,
-    incidents,
-    notes,
-    technicienId || null,
-    maintenanceInterval || 30,
-    req.params.id
-  ],
+    `UPDATE machines SET name=$1, type=$2, location=$3, status=$4, lastMaintenance=$5, nextMaintenance=$6, incidents=$7, notes=$8, technicienId=$9
+     WHERE id=$10`,
+    [name, type, location, status, lastMaintenance, nextMaintenance, incidents, notes, technicienId || null, req.params.id],
     function(err) {
       if (err) return res.status(500).json({ error: 'Erreur serveur' });
       res.json({ message: 'Machine mise à jour' });
