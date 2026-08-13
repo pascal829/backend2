@@ -6,7 +6,7 @@ const jwt = require('jsonwebtoken');
 const cron = require('node-cron');
 const fetch = require('node-fetch');
 const db = require('./database');
-
+const crypto = require('crypto');
 const app = express();
 
 // ===== CONFIGURATION DES VARIABLES D'ENVIRONNEMENT =====
@@ -250,6 +250,297 @@ app.post('/api/auth/login', (req, res) => {
       user: { id: user.id, email: user.email, name: user.name, role: user.role }
     });
   });
+});
+
+
+// ===== RÉINITIALISATION DU MOT DE PASSE =====
+
+app.post('/api/auth/forgot-password', async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({
+      error: 'Adresse email requise'
+    });
+  }
+
+  try {
+    // Recherche de l'utilisateur
+    db.get(
+      'SELECT id, email, name FROM users WHERE email = $1',
+      [email.toLowerCase().trim()],
+      async (err, user) => {
+
+        if (err) {
+          console.error('Erreur recherche utilisateur:', err);
+          return res.status(500).json({
+            error: 'Erreur serveur'
+          });
+        }
+
+        /*
+         * Pour des raisons de sécurité, on ne dit pas si
+         * l'adresse email existe ou non.
+         */
+        if (!user) {
+          return res.json({
+            message: 'Si cette adresse existe, un email de réinitialisation a été envoyé.'
+          });
+        }
+
+        // Génération d'un token sécurisé
+        const token = crypto.randomBytes(32).toString('hex');
+
+        // Le token sera valable 1 heure
+        const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+
+        // Suppression des anciens tokens de cet utilisateur
+        db.run(
+          'DELETE FROM password_reset_tokens WHERE user_id = $1',
+          [user.id],
+          (deleteErr) => {
+
+            if (deleteErr) {
+              console.error('Erreur suppression ancien token:', deleteErr);
+              return res.status(500).json({
+                error: 'Erreur serveur'
+              });
+            }
+
+            // Enregistrement du nouveau token
+            db.run(
+              `INSERT INTO password_reset_tokens
+                (user_id, token, expires_at)
+               VALUES ($1, $2, $3)`,
+              [user.id, token, expiresAt],
+              async (insertErr) => {
+
+                if (insertErr) {
+                  console.error('Erreur création token:', insertErr);
+                  return res.status(500).json({
+                    error: 'Erreur serveur'
+                  });
+                }
+
+                /*
+                 * IMPORTANT :
+                 * Cette adresse devra correspondre à ton frontend
+                 * Vercel.
+                 */
+                const frontendUrl =
+                  process.env.FRONTEND_URL ||
+                  'https://maintenance-two-nu.vercel.app';
+
+                const resetUrl =
+                  `${frontendUrl}/reset-password?token=${token}`;
+
+                const htmlContent = `
+                  <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+
+                    <div style="
+                      background-color: #2563eb;
+                      padding: 20px;
+                      border-radius: 8px 8px 0 0;
+                    ">
+                      <h1 style="
+                        color: white;
+                        margin: 0;
+                        font-size: 20px;
+                      ">
+                        🔑 Réinitialisation du mot de passe
+                      </h1>
+                    </div>
+
+                    <div style="
+                      background: white;
+                      padding: 24px;
+                      border: 1px solid #e5e7eb;
+                      border-radius: 0 0 8px 8px;
+                    ">
+
+                      <p style="font-size: 16px; color: #374151;">
+                        Bonjour ${user.name},
+                      </p>
+
+                      <p style="font-size: 15px; color: #374151;">
+                        Une demande de réinitialisation de votre mot de passe
+                        a été effectuée pour votre compte Maintenance CCGQ.
+                      </p>
+
+                      <p style="text-align: center; margin: 30px 0;">
+                        <a
+                          href="${resetUrl}"
+                          style="
+                            display: inline-block;
+                            background-color: #2563eb;
+                            color: white;
+                            padding: 12px 24px;
+                            text-decoration: none;
+                            border-radius: 6px;
+                            font-weight: bold;
+                          "
+                        >
+                          Réinitialiser mon mot de passe
+                        </a>
+                      </p>
+
+                      <p style="font-size: 14px; color: #6b7280;">
+                        Ce lien est valable pendant <strong>1 heure</strong>.
+                      </p>
+
+                      <p style="font-size: 14px; color: #6b7280;">
+                        Si vous n'êtes pas à l'origine de cette demande,
+                        vous pouvez simplement ignorer cet email.
+                      </p>
+
+                    </div>
+                  </div>
+                `;
+
+                try {
+
+                  await sendEmail(
+                    user.email,
+                    user.name,
+                    '🔑 Réinitialisation de votre mot de passe',
+                    htmlContent
+                  );
+
+                  console.log(
+                    `✅ Email de réinitialisation envoyé à ${user.email}`
+                  );
+
+                } catch (emailErr) {
+
+                  console.error(
+                    '❌ Erreur envoi email réinitialisation:',
+                    emailErr.message
+                  );
+
+                  return res.status(500).json({
+                    error: 'Impossible d’envoyer l’email'
+                  });
+                }
+
+                res.json({
+                  message:
+                    'Si cette adresse existe, un email de réinitialisation a été envoyé.'
+                });
+              }
+            );
+          }
+        );
+      }
+    );
+
+  } catch (err) {
+
+    console.error('Erreur forgot-password:', err);
+
+    res.status(500).json({
+      error: 'Erreur serveur'
+    });
+  }
+});
+
+
+// ===== CHANGEMENT EFFECTIF DU MOT DE PASSE =====
+
+app.post('/api/auth/reset-password', async (req, res) => {
+
+  const { token, password } = req.body;
+
+  if (!token || !password) {
+    return res.status(400).json({
+      error: 'Token et nouveau mot de passe requis'
+    });
+  }
+
+  // Vérification minimale du mot de passe
+  if (password.length < 6) {
+    return res.status(400).json({
+      error: 'Le mot de passe doit contenir au moins 6 caractères'
+    });
+  }
+
+  db.get(
+    `SELECT *
+     FROM password_reset_tokens
+     WHERE token = $1
+     AND expires_at > NOW()`,
+    [token],
+    async (err, resetToken) => {
+
+      if (err) {
+        console.error('Erreur vérification token:', err);
+
+        return res.status(500).json({
+          error: 'Erreur serveur'
+        });
+      }
+
+      if (!resetToken) {
+        return res.status(400).json({
+          error: 'Lien de réinitialisation invalide ou expiré'
+        });
+      }
+
+      try {
+
+        // Hash du nouveau mot de passe
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        // Modification du mot de passe
+        db.run(
+          'UPDATE users SET password = $1 WHERE id = $2',
+          [hashedPassword, resetToken.user_id],
+          (updateErr) => {
+
+            if (updateErr) {
+              console.error(
+                'Erreur modification mot de passe:',
+                updateErr
+              );
+
+              return res.status(500).json({
+                error: 'Erreur serveur'
+              });
+            }
+
+            // Suppression du token après utilisation
+            db.run(
+              'DELETE FROM password_reset_tokens WHERE id = $1',
+              [resetToken.id],
+              (deleteErr) => {
+
+                if (deleteErr) {
+                  console.error(
+                    'Erreur suppression token:',
+                    deleteErr
+                  );
+                }
+
+                res.json({
+                  message: 'Mot de passe modifié avec succès'
+                });
+              }
+            );
+          }
+        );
+
+      } catch (hashErr) {
+
+        console.error(
+          'Erreur hash mot de passe:',
+          hashErr
+        );
+
+        res.status(500).json({
+          error: 'Erreur serveur'
+        });
+      }
+    }
+  );
 });
 
 // ===== ROUTES MACHINES =====
