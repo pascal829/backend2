@@ -195,6 +195,69 @@ app.delete('/api/auth/users/:id', authMiddleware, (req, res) => {
   });
 });
 
+// ===== RÉINITIALISATION DU MOT DE PASSE PAR L'ADMIN =====
+
+app.put('/api/auth/users/:id/password', authMiddleware, async (req, res) => {
+  // Seul un administrateur peut modifier le mot de passe d'un autre utilisateur
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({
+      error: 'Accès réservé aux administrateurs'
+    });
+  }
+
+  const userId = req.params.id;
+  const { password } = req.body;
+
+  // Vérification du mot de passe
+  if (!password) {
+    return res.status(400).json({
+      error: 'Le nouveau mot de passe est requis'
+    });
+  }
+
+  if (password.length < 6) {
+    return res.status(400).json({
+      error: 'Le mot de passe doit contenir au moins 6 caractères'
+    });
+  }
+
+  try {
+    // Hash du nouveau mot de passe
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    db.run(
+      'UPDATE users SET password = $1 WHERE id = $2',
+      [hashedPassword, userId],
+      function(err) {
+        if (err) {
+          console.error('Erreur réinitialisation mot de passe:', err);
+
+          return res.status(500).json({
+            error: 'Erreur serveur'
+          });
+        }
+
+        if (this.rowCount === 0) {
+          return res.status(404).json({
+            error: 'Utilisateur introuvable'
+          });
+        }
+
+        res.json({
+          message: 'Mot de passe réinitialisé avec succès'
+        });
+      }
+    );
+
+  } catch (err) {
+    console.error('Erreur hash mot de passe:', err);
+
+    res.status(500).json({
+      error: 'Erreur serveur'
+    });
+  }
+});
+
 app.get('/api/users', authMiddleware, (req, res) => {
   db.all('SELECT id, name, role FROM users', [], (err, rows) => {
     if (err) return res.status(500).json({ error: 'Erreur serveur' });
