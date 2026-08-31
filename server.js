@@ -843,3 +843,8 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Serveur démarré sur le port ${PORT}`);
 });
+
+// ===== PING POUR TEST MAIL =====
+app.get('/api/ping', (req, res) => {
+  res.json({ status: 'ok' });
+});
