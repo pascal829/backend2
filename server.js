@@ -822,20 +822,62 @@ app.post('/api/interventions', authMiddleware, (req, res) => {
 
 cron.schedule('0 8 * * *', () => {
   console.log('🔍 Vérification des maintenances à venir...');
-  const today = new Date();
+
+  const now = new Date();
+
+  // Date du jour uniquement
+  const today = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate()
+  );
 
   db.all('SELECT * FROM machines', [], async (err, machines) => {
-    if (err) return console.error('Erreur lecture machines:', err);
+    if (err) {
+      console.error('❌ Erreur lecture machines:', err);
+      return;
+    }
 
     for (const machine of machines) {
-      if (!machine.nextMaintenance) continue;
-      const nextDate = new Date(machine.nextMaintenance);
-      const diffDays = Math.ceil((nextDate - today) / (1000 * 60 * 60 * 24));
 
-      if (diffDays === 3) await sendMaintenanceAlert(machine, 3);
-      if (diffDays === 0) await sendMaintenanceAlert(machine, 0);
+      if (!machine.nextMaintenance) {
+        console.log(`⚠️ ${machine.name}: aucune date de maintenance`);
+        continue;
+      }
+
+      const nextDateRaw = new Date(machine.nextMaintenance);
+
+      // Date de maintenance uniquement
+      const nextDate = new Date(
+        nextDateRaw.getFullYear(),
+        nextDateRaw.getMonth(),
+        nextDateRaw.getDate()
+      );
+
+      const diffDays = Math.round(
+        (nextDate - today) / (1000 * 60 * 60 * 24)
+      );
+
+      console.log(
+        `🔧 ${machine.name} | Maintenance : ${nextDate.toLocaleDateString('fr-FR')} | Jours restants : ${diffDays}`
+      );
+
+      // Maintenance dans 3 jours
+      if (diffDays === 3) {
+        console.log(`📧 Envoi rappel J-3 pour ${machine.name}`);
+        await sendMaintenanceAlert(machine, 3);
+      }
+
+      // Maintenance aujourd'hui
+      if (diffDays === 0) {
+        console.log(`📧 Envoi alerte maintenance aujourd'hui pour ${machine.name}`);
+        await sendMaintenanceAlert(machine, 0);
+      }
     }
   });
+
+}, {
+  timezone: 'Europe/Paris'
 });
 
 // ===== DÉMARRAGE DU SERVEUR =====
