@@ -820,7 +820,7 @@ app.post('/api/interventions', authMiddleware, (req, res) => {
 
 // ===== CRON JOB (VÉRIFICATION AUTOMATIQUE) =====
 
-cron.schedule('45 12 * * *', () => {
+cron.schedule('45 10 * * *', () => {
   console.log('🔍 Vérification des maintenances à venir...');
 
   const now = new Date();
@@ -840,12 +840,19 @@ cron.schedule('45 12 * * *', () => {
 
     for (const machine of machines) {
 
-      if (!machine.nextMaintenance) {
-        console.log(`⚠️ ${machine.name}: aucune date de maintenance`);
+      // Gestion des différents noms possibles de la colonne PostgreSQL
+      const nextMaintenance =
+        machine.nextmaintenance ||
+        machine.nextMaintenance;
+
+      if (!nextMaintenance) {
+        console.log(
+          `⚠️ ${machine.name}: aucune date de maintenance`
+        );
         continue;
       }
 
-      const nextDateRaw = new Date(machine.nextMaintenance);
+      const nextDateRaw = new Date(nextMaintenance);
 
       // Date de maintenance uniquement
       const nextDate = new Date(
@@ -859,18 +866,24 @@ cron.schedule('45 12 * * *', () => {
       );
 
       console.log(
-        `🔧 ${machine.name} | Maintenance : ${nextDate.toLocaleDateString('fr-FR')} | Jours restants : ${diffDays}`
+        `🔧 ${machine.name} | Maintenance: ${nextDate.toLocaleDateString('fr-FR')} | Jours restants: ${diffDays}`
       );
 
       // Maintenance dans 3 jours
       if (diffDays === 3) {
-        console.log(`📧 Envoi rappel J-3 pour ${machine.name}`);
+        console.log(
+          `📧 Envoi rappel J-3 pour ${machine.name}`
+        );
+
         await sendMaintenanceAlert(machine, 3);
       }
 
       // Maintenance aujourd'hui
       if (diffDays === 0) {
-        console.log(`📧 Envoi alerte maintenance aujourd'hui pour ${machine.name}`);
+        console.log(
+          `📧 Envoi alerte maintenance aujourd'hui pour ${machine.name}`
+        );
+
         await sendMaintenanceAlert(machine, 0);
       }
     }
