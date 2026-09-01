@@ -820,7 +820,7 @@ app.post('/api/interventions', authMiddleware, (req, res) => {
 
 // ===== CRON JOB (VÉRIFICATION AUTOMATIQUE) =====
 
-cron.schedule('00 22 * * *', () => {
+cron.schedule('30 07 * * *', () => {
   console.log('🔍 Vérification des maintenances à venir...');
 
   const now = new Date();
