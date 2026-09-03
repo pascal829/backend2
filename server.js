@@ -820,7 +820,7 @@ app.post('/api/interventions', authMiddleware, (req, res) => {
 
 // ===== CRON JOB (VÉRIFICATION AUTOMATIQUE) =====
 
-cron.schedule('30 07 * * *', () => {
+cron.schedule('15 08 * * *', () => {
   console.log('🔍 Vérification des maintenances à venir...');
 
   const now = new Date();
@@ -840,7 +840,7 @@ cron.schedule('30 07 * * *', () => {
 
     for (const machine of machines) {
 
-      // Gestion des différents noms possibles de la colonne PostgreSQL
+      // Récupération compatible PostgreSQL
       const nextMaintenance =
         machine.nextmaintenance ||
         machine.nextMaintenance;
@@ -851,6 +851,12 @@ cron.schedule('30 07 * * *', () => {
         );
         continue;
       }
+
+      // On normalise l'objet machine pour les fonctions d'alerte
+      const machineForAlert = {
+        ...machine,
+        nextMaintenance: nextMaintenance
+      };
 
       const nextDateRaw = new Date(nextMaintenance);
 
@@ -875,7 +881,7 @@ cron.schedule('30 07 * * *', () => {
           `📧 Envoi rappel J-3 pour ${machine.name}`
         );
 
-        await sendMaintenanceAlert(machine, 3);
+        await sendMaintenanceAlert(machineForAlert, 3);
       }
 
       // Maintenance aujourd'hui
@@ -884,7 +890,7 @@ cron.schedule('30 07 * * *', () => {
           `📧 Envoi alerte maintenance aujourd'hui pour ${machine.name}`
         );
 
-        await sendMaintenanceAlert(machine, 0);
+        await sendMaintenanceAlert(machineForAlert, 0);
       }
     }
   });
