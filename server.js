@@ -820,7 +820,7 @@ app.post('/api/interventions', authMiddleware, (req, res) => {
 
 // ===== CRON JOB (VÉRIFICATION AUTOMATIQUE) =====
 
-cron.schedule('15 08 * * *', () => {
+cron.schedule('55 08 * * *', () => {
   console.log('🔍 Vérification des maintenances à venir...');
 
   const now = new Date();
@@ -854,9 +854,18 @@ cron.schedule('15 08 * * *', () => {
 
       // On normalise l'objet machine pour les fonctions d'alerte
       const machineForAlert = {
-        ...machine,
-        nextMaintenance: nextMaintenance
-      };
+  ...machine,
+
+  // Normalisation de la date
+  nextMaintenance:
+    machine.nextmaintenance ||
+    machine.nextMaintenance,
+
+  // Normalisation du technicien
+  technicienId:
+    machine.technicienid ||
+    machine.technicienId
+};
 
       const nextDateRaw = new Date(nextMaintenance);
 
